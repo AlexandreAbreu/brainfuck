@@ -1,7 +1,11 @@
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <cstddef>
+#include <getopt.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <stack>
 #include <vector>
 
@@ -35,7 +39,11 @@ void interpret(const char* p)
   std::stack<std::ptrdiff_t> starts;
   while(*p != '\0')
     {
-      std::cout << "cur: " << *p << std::endl;
+      if(strstr("+-,[].]><", std::string(1, *p).c_str()))
+	{
+	  //	  std::cout << "C: " << OFFSET(p) << ", cur: " << *p << std::endl;
+	}
+
       switch(*p)
         {
         case '>':
@@ -61,37 +69,66 @@ void interpret(const char* p)
         case '[':
           {
             if (_state.memory[_state.tp])
-              starts.push(OFFSET(p));
+	      {
+		starts.push(OFFSET(p) + 1);
+	      }
             else
-              while(p != 0 && *p != '\0' && *p != ']') ++p;
+	      {
+		int level = 0;
+		++p;
+		while (p != 0 && *p != '\0')
+		  {
+		    if (*p == '[')
+		      {
+			++level;
+		      }
+		    else if (*p == ']')
+		      {
+			if (level == 0)
+			  {
+			    break;
+			  }
+			else
+			  {
+			    --level;
+			  }
+		      }
+		    ++p;
+		  }
+	      }
           }
           break;
         case ']':
           {
-            if (starts.empty())
-              {
-                std::cerr << "Invalid operation (empty '[')"
-                          << std::endl;
-                exit(1);
-              }
-            if (starts.top() < 0
-                || starts.top() > (OFFSET(p)-1))
-              {
-                std::cerr << "Invalid operation (invalid initial ']'): "
-                          << starts.top()
-                          << std::endl;
-                exit(1);
-              }
-            std::ptrdiff_t s = starts.top();
-            std::cout << s << std::endl;
-            starts.pop();
-            p = START_P + s;
-            std::cout << "next: " << *p << std::endl;
-            continue;
+            if (_state.memory[_state.tp])
+	      {
+		if (starts.empty())
+		  {
+		    std::cerr << "Invalid operation (empty '[')"
+			      << std::endl;
+		    exit(1);
+		  }
+		if (starts.top() < 0
+		    || starts.top() > (OFFSET(p)-1))
+		  {
+		    std::cerr << "Invalid operation (invalid initial ']'): "
+			      << starts.top()
+			      << std::endl;
+		    exit(1);
+		  }
+		std::ptrdiff_t s = starts.top();
+		p = START_P + s;
+		continue;
+	      }
+	    else 
+	      {
+		std::ptrdiff_t s = starts.top();
+		starts.pop();
+	      }
           }
           break;
         default:
-          std::cerr << "Invalid operation (unknown)" << std::endl;
+	  break;
         }
       ++p;
     }
@@ -102,16 +139,56 @@ void interpret(const char* p)
 
 int main(int argc, char* argv[])
 {
-  std::vector<char> p;
-  char c;
-  while (std::cin.get(c))
+  std::string file;
+  bool debugger = false;
+
+  int idx = 0;
+  struct option long_options[] = {
+    {"file", required_argument, 0,  'f'},
+    {"debugger", no_argument, 0,  'd'},
+    {0, 0, 0, 0}
+  };
+  while (-1 != (idx = getopt_long(
+      argc,
+      argv,
+      "f:d",
+      long_options,
+      &idx)))
     {
-      if (c == '\n')
-        break;
-      p.push_back(c);
+      switch(idx)
+	{
+	case 'f':
+	  file = optarg;
+	  break;
+	case 'd':
+	  debugger = true;
+	  break;
+	}
     }
-  p.push_back('\0');
-  
+
+  std::vector<std::string::value_type> p;
+  if (!file.empty())
+    {
+      std::ifstream ifs(file);
+      std::stringstream ss;
+      ss << ifs.rdbuf();
+      std::string s = ss.str();
+      p = std::vector<std::string::value_type>(
+          s.begin(),
+	  s.end());
+    }
+  else
+    {
+      char c;
+      while (std::cin.get(c))
+	{
+	  if (c == '\n')
+	    break;
+	  p.push_back(c);
+	}
+      p.push_back('\0');
+    }
+
   interpret(&p[0]);
 
   return EXIT_SUCCESS;
