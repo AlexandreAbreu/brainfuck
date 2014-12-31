@@ -22,6 +22,18 @@ struct State {
   uint16_t tp;
 } _state = {0};
 
+enum Operations
+  {
+    OP_FORWARD = '>',
+    OP_BACKWARD = '<',
+    OP_INCR = '+',
+    OP_DECR = '-',
+    OP_COUT = '.',
+    OP_CIN = ',',
+    OP_WHILE = '[',
+    OP_END_WHILE = ']'
+  };
+
 void interpret(const char* p)
 {
 #define GUARD(p)                                                    \
@@ -36,103 +48,141 @@ void interpret(const char* p)
   const char* const START_P = p;
 #define OFFSET(v) ((std::uintptr_t)(v) - (std::uintptr_t)START_P)
 
+  static void* dispatch_table[127] {
+    /* 0 */
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop,
+    /* 43 */
+        &&op_incr,
+	&&op_cin,
+	&&op_decr,
+	&&op_cout,
+    /* 47 */
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+    /* 57 */
+        &&op_noop, &&op_noop, &&op_noop,
+    /* 60 */
+	&&op_backward,
+	&&op_noop,    
+	&&op_forward,
+    /* 63 */
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+    /* 91 */
+	&&op_while,
+	&&op_noop,
+	&&op_end_while,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop, &&op_noop,
+	&&op_noop, &&op_noop, &&op_noop
+      };
+#define NEXT() { goto *dispatch_table[*p++]; }
+
   std::stack<std::ptrdiff_t> starts;
-  while(*p != '\0')
+
+  // FIXME: should only be a valid char
+  NEXT();
+  while(1)
     {
-      if(strstr("+-,[].]><", std::string(1, *p).c_str()))
-	{
-	  //	  std::cout << "C: " << OFFSET(p) << ", cur: " << *p << std::endl;
-	}
+    op_forward:
+      ++_state.tp;
+      NEXT();
 
-      switch(*p)
-        {
-        case '>':
-          ++_state.tp;
-          break;
-        case '<':
-          --_state.tp;
-          break;
-        case '+':
-          GUARD(_state.tp);
-          _state.memory[_state.tp]++;
-          break;
-        case '-':
-          GUARD(_state.tp);
-          _state.memory[_state.tp]--;
-          break;
-        case '.':
-          std::cout << (int8_t) _state.memory[_state.tp];
-          break;
-        case ',':
-          std::cin >> _state.memory[_state.tp];
-          break;
-        case '[':
-          {
-            if (_state.memory[_state.tp])
+    op_backward:
+      --_state.tp;
+      NEXT();
+      
+    op_incr:
+      GUARD(_state.tp);
+      _state.memory[_state.tp]++;
+      NEXT();
+      
+    op_decr:
+      GUARD(_state.tp);
+      _state.memory[_state.tp]--;
+      NEXT();
+      
+    op_cout:
+      std::cout << (int8_t) _state.memory[_state.tp];
+      NEXT();
+	  
+    op_cin:
+      std::cin >> _state.memory[_state.tp];
+      NEXT();
+
+    op_while:
+      {
+	if (_state.memory[_state.tp])
+	  {
+	    starts.push(OFFSET(p));
+	  }
+	else
+	  {
+	    int level = 0;
+	    ++p;
+	    while (p != 0 && *p != '\0')
 	      {
-		starts.push(OFFSET(p) + 1);
-	      }
-            else
-	      {
-		int level = 0;
+		if (*p == '[')
+		  {
+		    ++level;
+		  }
+		else if (*p == ']')
+		  {
+		    if (level == 0)
+		      {
+			break;
+		      }
+		    else
+		      {
+			--level;
+		      }
+		  }
 		++p;
-		while (p != 0 && *p != '\0')
-		  {
-		    if (*p == '[')
-		      {
-			++level;
-		      }
-		    else if (*p == ']')
-		      {
-			if (level == 0)
-			  {
-			    break;
-			  }
-			else
-			  {
-			    --level;
-			  }
-		      }
-		    ++p;
-		  }
 	      }
-          }
-          break;
-        case ']':
-          {
-            if (_state.memory[_state.tp])
-	      {
-		if (starts.empty())
-		  {
-		    std::cerr << "Invalid operation (empty '[')"
-			      << std::endl;
-		    exit(1);
-		  }
-		if (starts.top() < 0
-		    || starts.top() > (OFFSET(p)-1))
-		  {
-		    std::cerr << "Invalid operation (invalid initial ']'): "
-			      << starts.top()
-			      << std::endl;
-		    exit(1);
-		  }
-		std::ptrdiff_t s = starts.top();
-		p = START_P + s;
-		continue;
-	      }
-	    else 
-	      {
-		std::ptrdiff_t s = starts.top();
-		starts.pop();
-	      }
-          }
-          break;
-        default:
-	  break;
-        }
-      ++p;
-    }
+	    ++p;
+	  }
+      }
+      NEXT();
 
+    op_end_while:
+      {
+	if (_state.memory[_state.tp])
+	  {
+	    if (starts.empty())
+	      {
+		std::cerr << "Invalid operation (empty '[')"
+			  << std::endl;
+		exit(1);
+	      }
+	    if (starts.top() < 0
+		|| starts.top() > (OFFSET(p)-1))
+	      {
+		std::cerr << "Invalid operation (invalid initial ']'): "
+			  << starts.top()
+			  << std::endl;
+		exit(1);
+	      }
+	    std::ptrdiff_t s = starts.top();
+	    p = START_P + s;
+	  }
+	else 
+	  {
+	    starts.pop();
+	  }
+      }
+      NEXT();
+
+    op_noop:
+      NEXT();
+
+    } // while() {
+
+#undef NEXT
 #undef OFFSET
 #undef GUARD
 }
